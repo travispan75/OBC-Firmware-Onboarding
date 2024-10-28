@@ -51,7 +51,7 @@ error_code_t thermalMgrSendEvent(thermal_mgr_event_t *event) {
 
   BaseType_t queueSend = xQueueSend(thermalMgrQueueHandle, event, 0);
   if (queueSend != pdPASS) {
-    return queueSend;
+    return ERR_CODE_QUEUE_FULL;
   }
 
   return ERR_CODE_SUCCESS;
