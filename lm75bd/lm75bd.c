@@ -26,26 +26,15 @@ error_code_t lm75bdInit(lm75bd_config_t *config) {
 }
 
 error_code_t readTempLM75BD(uint8_t devAddr, float *temp) {
-  uint8_t registerPointer = 0x00;
-  uint8_t writeBuf[1] = {registerPointer};
-  
-  error_code_t writeResult = i2cSendTo(devAddr, writeBuf, sizeof(writeBuf));
-  if (writeResult != ERR_CODE_SUCCESS) {
-    return writeResult;
-  }
+  uint8_t writeBuf[1] = {0x00};
+  uint8_t readBuf[2] = {0};
 
-  uint8_t readBuf[2];
-  error_code_t readResult = i2cReceiveFrom(devAddr, readBuf, sizeof(readBuf));
-  if (readResult != ERR_CODE_SUCCESS) {
-    return readResult;
-  }
+  error_code_t errCode;
+  RETURN_IF_ERROR_CODE(i2cSendTo(devAddr, writeBuf, sizeof(writeBuf)));
+  RETURN_IF_ERROR_CODE(i2cReceiveFrom(devAddr, readBuf, sizeof(readBuf)));
 
-  uint16_t tempBit = (readBuf[0] << 8) | readBuf[1];
-  if (tempBit & (1 << 15)) {
-    *temp = (int16_t)((tempBit >> 5) | 0xF800)*0.125;
-  } else {
-    *temp = (tempBit >> 5)*0.125;
-  }
+  int16_t tempBit = (readBuf[0] << 8) | readBuf[1];
+  *temp=(tempBit>>5)*0.125; 
 
   return ERR_CODE_SUCCESS;
 }

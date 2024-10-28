@@ -2,6 +2,7 @@
 #include "errors.h"
 #include "lm75bd.h"
 #include "console.h"
+#include "logging.h"
 
 #include <FreeRTOS.h>
 #include <os_task.h>
@@ -42,6 +43,12 @@ void initThermalSystemManager(lm75bd_config_t *config) {
 }
 
 error_code_t thermalMgrSendEvent(thermal_mgr_event_t *event) {
+  if (thermalMgrQueueHandle == NULL) {
+    return ERR_CODE_INVALID_QUEUE_HANDLE;
+  } else if (event == NULL) {
+    return ERR_CODE_INVALID_EVENT;
+  }
+
   BaseType_t queueSend = xQueueSend(thermalMgrQueueHandle, event, 0);
   if (queueSend != pdPASS) {
     return queueSend;
@@ -51,14 +58,8 @@ error_code_t thermalMgrSendEvent(thermal_mgr_event_t *event) {
 }
 
 void osHandlerLM75BD(void) {
-  float temp;
-  if (readTempLM75BD(LM75BD_OBC_I2C_ADDR, &temp) == ERR_CODE_SUCCESS) {
-    if (temp > 80.0) {
-      overTemperatureDetected();
-    } else if (temp < 75.0) {
-      safeOperatingConditions();
-    }
-  }
+  thermal_mgr_event_t event = { .type = THERMAL_MGR_EVENT_OVER_TEMP };
+  thermalMgrSendEvent(&event);
 }
 
 static void thermalMgr(void *pvParameters) {
@@ -67,10 +68,27 @@ static void thermalMgr(void *pvParameters) {
     if (xQueueReceive(thermalMgrQueueHandle, &event, portMAX_DELAY) == pdPASS) {
       if (event.type == THERMAL_MGR_EVENT_MEASURE_TEMP_CMD) {
         float temp;
-        if (readTempLM75BD(LM75BD_OBC_I2C_ADDR, &temp) == ERR_CODE_SUCCESS) {
+        error_code_t errCode = readTempLM75BD(LM75BD_OBC_I2C_ADDR, &temp);
+        LOG_IF_ERROR_CODE(errCode);
+        if (errCode == ERR_CODE_SUCCESS) {
           addTemperatureTelemetry(temp);
         }
+      } else if (event.type == THERMAL_MGR_EVENT_OVER_TEMP) {
+        float temp;
+        error_code_t errCode = readTempLM75BD(LM75BD_OBC_I2C_ADDR, &temp);
+        LOG_IF_ERROR_CODE(errCode);
+        if (errCode == ERR_CODE_SUCCESS) {
+          if (temp > LM75BD_DEFAULT_OT_THRESH) {
+            overTemperatureDetected();
+          } else if (temp < LM75BD_DEFAULT_HYST_THRESH) {
+            safeOperatingConditions();
+          }
+        }
+       } else {
+        LOG_ERROR_CODE(ERR_CODE_INVALID_EVENT);
       }
+    } else {
+      LOG_ERROR_CODE(ERR_CODE_QUEUE_RECEIVE_FAILED);
     }
   }
 }
